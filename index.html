@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>講義音声ノートAI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Helvetica Neue', sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      color: #fff;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    input[type="text"]:focus, input[type="password"]:focus {
+      border-color: #555;
+    }
+
+    .file-area {
+      border: 2px dashed #333;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .file-area:hover { border-color: #555; }
+
+    .file-area input { display: none; }
+
+    .file-area p {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .file-name {
+      margin-top: 8px;
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 8px;
+    }
+
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .result-section { display: none; }
+
+    .result-block {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .result-block h3 {
+      font-size: 0.8rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+
+    .result-block p, .result-block ul {
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: #ddd;
+    }
+
+    .result-block ul { padding-left: 16px; }
+
+    .copy-btn {
+      width: auto;
+      padding: 6px 12px;
+      background: #222;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 400;
+      margin-top: 12px;
+    }
+
+    .copy-btn:hover { background: #2a2a2a; opacity: 1; }
+
+    .status {
+      font-size: 0.85rem;
+      color: #888;
+      text-align: center;
+      padding: 12px;
+      display: none;
+    }
+
+    .error {
+      color: #ff6b6b;
+      font-size: 0.85rem;
+      padding: 12px;
+      background: #1a0000;
+      border-radius: 8px;
+      display: none;
+      margin-top: 8px;
+    }
+
+    .api-key-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .api-key-row input { flex: 1; }
+
+    .save-btn {
+      width: auto;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-top: 0;
+      white-space: nowrap;
+    }
+
+    .saved-badge {
+      font-size: 0.75rem;
+      color: #4caf50;
+      margin-top: 6px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>講義音声ノートAI</h1>
+  <p class="subtitle">音声を入れると文字起こし・要約・要点を自動生成します</p>
+
+  <!-- APIキー -->
+  <div class="card">
+    <label>Gemini APIキー</label>
+    <div class="api-key-row">
+      <input type="password" id="apiKey" placeholder="AIza...">
+      <button class="save-btn" onclick="saveKey()">保存</button>
+    </div>
+    <p class="saved-badge" id="savedBadge">✓ 保存済み</p>
+  </div>
+
+  <!-- 講義名 -->
+  <div class="card">
+    <label>講義名（任意）</label>
+    <input type="text" id="lectureName" placeholder="例：マーケティング概論 第3回">
+  </div>
+
+  <!-- 音声ファイル -->
+  <div class="card">
+    <label>音声ファイル</label>
+    <div class="file-area" onclick="document.getElementById('audioFile').click()">
+      <input type="file" id="audioFile" accept="audio/*" onchange="onFileSelect(this)">
+      <p>タップしてファイルを選択</p>
+      <p class="file-name" id="fileName"></p>
+    </div>
+  </div>
+
+  <!-- 実行ボタン -->
+  <button id="runBtn" onclick="run()" disabled>文字起こし・要約を生成</button>
+  <p class="status" id="status"></p>
+  <p class="error" id="error"></p>
+
+  <!-- 結果 -->
+  <div class="result-section" id="resultSection">
+    <div class="card" style="margin-top:24px;">
+      <div class="result-block">
+        <h3>文字起こし</h3>
+        <p id="transcriptText"></p>
+        <button class="copy-btn" onclick="copy('transcriptText', this)">コピー</button>
+      </div>
+      <div class="result-block">
+        <h3>要約</h3>
+        <p id="summaryText"></p>
+        <button class="copy-btn" onclick="copy('summaryText', this)">コピー</button>
+      </div>
+      <div class="result-block">
+        <h3>要点</h3>
+        <ul id="pointsList"></ul>
+        <button class="copy-btn" onclick="copyPoints(this)">コピー</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // APIキーの読み込み
+    window.onload = () => {
+      const saved = localStorage.getItem('gemini_api_key');
+      if (saved) {
+        document.getElementById('apiKey').value = saved;
+        document.getElementById('savedBadge').style.display = 'block';
+        checkReady();
+      }
+    };
+
+    function saveKey() {
+      const key = document.getElementById('apiKey').value.trim();
+      if (!key) return;
+      localStorage.setItem('gemini_api_key', key);
+      document.getElementById('savedBadge').style.display = 'block';
+      checkReady();
+    }
+
+    function onFileSelect(input) {
+      const file = input.files[0];
+      if (file) {
+        document.getElementById('fileName').textContent = file.name;
+        checkReady();
+      }
+    }
+
+    function checkReady() {
+      const key = document.getElementById('apiKey').value.trim();
+      const file = document.getElementById('audioFile').files[0];
+      document.getElementById('runBtn').disabled = !(key && file);
+    }
+
+    function showStatus(msg) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideMessages() {
+      document.getElementById('status').style.display = 'none';
+      document.getElementById('error').style.display = 'none';
+    }
+
+    async function run() {
+      hideMessages();
+      document.getElementById('resultSection').style.display = 'none';
+
+      const key = document.getElementById('apiKey').value.trim();
+      const file = document.getElementById('audioFile').files[0];
+
+      if (!key) { showError('APIキーを入力してください'); return; }
+      if (!file) { showError('音声ファイルを選択してください'); return; }
+
+      document.getElementById('runBtn').disabled = true;
+      showStatus('音声を読み込み中...');
+
+      try {
+        // Base64変換
+        const base64 = await toBase64(file);
+        const mimeType = file.type || 'audio/mp4';
+
+        showStatus('文字起こし中... (少々お待ちください)');
+
+        // 文字起こし
+        const transcript = await callGemini(key, base64, mimeType,
+          '以下の音声を正確に文字起こししてください。話し言葉をそのまま書き起こしてください。');
+
+        document.getElementById('transcriptText').textContent = transcript;
+
+        showStatus('要約・要点を生成中...');
+
+        // 要約
+        const summaryRes = await callGeminiText(key,
+          `以下の文字起こしテキストについて、以下の2つを出力してください。\n\n【要約】\n3行程度で要約\n\n【要点】\n・箇条書きで3〜5個\n\n文字起こし:\n${transcript}`
+        );
+
+        // パース
+        const summaryMatch = summaryRes.match(/【要約】\s*([\s\S]*?)(?=【要点】|$)/);
+        const pointsMatch = summaryRes.match(/【要点】\s*([\s\S]*?)$/);
+
+        document.getElementById('summaryText').textContent =
+          summaryMatch ? summaryMatch[1].trim() : summaryRes;
+
+        const pointsList = document.getElementById('pointsList');
+        pointsList.innerHTML = '';
+        if (pointsMatch) {
+          const points = pointsMatch[1].trim().split('\n')
+            .filter(p => p.trim())
+            .map(p => p.replace(/^[・\-\*]\s*/, '').trim())
+            .filter(p => p);
+          points.forEach(p => {
+            const li = document.createElement('li');
+            li.textContent = p;
+            pointsList.appendChild(li);
+          });
+        }
+
+        document.getElementById('resultSection').style.display = 'block';
+        hideMessages();
+
+      } catch (e) {
+        showError('エラー: ' + e.message);
+      } finally {
+        document.getElementById('runBtn').disabled = false;
+      }
+    }
+
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function callGemini(key, base64, mimeType, prompt) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inline_data: { mime_type: mimeType, data: base64 } },
+                { text: prompt }
+              ]
+            }]
+          })
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text;
+    }
+
+    async function callGeminiText(key, prompt) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text;
+    }
+
+    function copy(id, btn) {
+      const text = document.getElementById(id).textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'コピーしました！';
+        setTimeout(() => btn.textContent = 'コピー', 2000);
+      });
+    }
+
+    function copyPoints(btn) {
+      const items = document.getElementById('pointsList').querySelectorAll('li');
+      const text = Array.from(items).map(li => '・' + li.textContent).join('\n');
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'コピーしました！';
+        setTimeout(() => btn.textContent = 'コピー', 2000);
+      });
+    }
+  </script>
+</body>
+</html>
