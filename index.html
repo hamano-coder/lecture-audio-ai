@@ -70,7 +70,6 @@
     }
 
     .file-area:hover { border-color: #555; }
-
     .file-area input { display: none; }
 
     .file-area p {
@@ -101,6 +100,57 @@
     button:hover { opacity: 0.85; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    .record-btn {
+      background: #e53935;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .record-btn.recording {
+      background: #b71c1c;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
+    .record-status {
+      font-size: 0.85rem;
+      color: #aaa;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .tab-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: #222;
+      color: #888;
+      border: 1px solid #333;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-top: 0;
+    }
+
+    .tab-btn.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
     .result-section { display: none; }
 
     .result-block {
@@ -109,7 +159,6 @@
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 12px;
-      position: relative;
     }
 
     .result-block h3 {
@@ -205,13 +254,27 @@
     <input type="text" id="lectureName" placeholder="例：マーケティング概論 第3回">
   </div>
 
-  <!-- 音声ファイル -->
+  <!-- 音声入力 -->
   <div class="card">
-    <label>音声ファイル</label>
-    <div class="file-area" onclick="document.getElementById('audioFile').click()">
-      <input type="file" id="audioFile" accept="audio/*,.m4a,.mp4,.aac,.wav,.mp3" onchange="onFileSelect(this)">
-      <p>タップしてファイルを選択</p>
-      <p class="file-name" id="fileName"></p>
+    <label>音声入力</label>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="switchTab('file')">ファイル選択</button>
+      <button class="tab-btn" onclick="switchTab('record')">その場で録音</button>
+    </div>
+
+    <!-- ファイル選択 -->
+    <div class="tab-content active" id="tab-file">
+      <div class="file-area" onclick="document.getElementById('audioFile').click()">
+        <input type="file" id="audioFile" accept="audio/*,.m4a,.mp4,.aac,.wav,.mp3" onchange="onFileSelect(this)">
+        <p>タップしてファイルを選択</p>
+        <p class="file-name" id="fileName"></p>
+      </div>
+    </div>
+
+    <!-- 録音 -->
+    <div class="tab-content" id="tab-record">
+      <button class="record-btn" id="recordBtn" onclick="toggleRecord()">🎙 録音開始</button>
+      <p class="record-status" id="recordStatus">ボタンを押して録音開始</p>
     </div>
   </div>
 
@@ -242,7 +305,11 @@
   </div>
 
   <script>
-    // APIキーの読み込み
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordedBlob = null;
+    let activeTab = 'file';
+
     window.onload = () => {
       const saved = localStorage.getItem('gemini_api_key');
       if (saved) {
@@ -260,6 +327,16 @@
       checkReady();
     }
 
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', (i === 0 && tab === 'file') || (i === 1 && tab === 'record'));
+      });
+      document.getElementById('tab-file').classList.toggle('active', tab === 'file');
+      document.getElementById('tab-record').classList.toggle('active', tab === 'record');
+      checkReady();
+    }
+
     function onFileSelect(input) {
       const file = input.files[0];
       if (file) {
@@ -268,10 +345,51 @@
       }
     }
 
+    async function toggleRecord() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          stream.getTracks().forEach(t => t.stop());
+          document.getElementById('recordBtn').textContent = '🎙 もう一度録音';
+          document.getElementById('recordBtn').classList.remove('recording');
+          document.getElementById('recordStatus').textContent = '録音完了！生成ボタンを押してください';
+          checkReady();
+        };
+
+        mediaRecorder.start();
+        document.getElementById('recordBtn').textContent = '⏹ 録音停止';
+        document.getElementById('recordBtn').classList.add('recording');
+        document.getElementById('recordStatus').textContent = '録音中...';
+        recordedBlob = null;
+        checkReady();
+
+      } catch (e) {
+        document.getElementById('recordStatus').textContent = 'マイクのアクセスを許可してください';
+      }
+    }
+
     function checkReady() {
       const key = document.getElementById('apiKey').value.trim();
-      const file = document.getElementById('audioFile').files[0];
-      document.getElementById('runBtn').disabled = !(key && file);
+      let hasAudio = false;
+      if (activeTab === 'file') {
+        hasAudio = !!document.getElementById('audioFile').files[0];
+      } else {
+        hasAudio = !!recordedBlob;
+      }
+      document.getElementById('runBtn').disabled = !(key && hasAudio);
     }
 
     function showStatus(msg) {
@@ -296,22 +414,30 @@
       document.getElementById('resultSection').style.display = 'none';
 
       const key = document.getElementById('apiKey').value.trim();
-      const file = document.getElementById('audioFile').files[0];
-
       if (!key) { showError('APIキーを入力してください'); return; }
-      if (!file) { showError('音声ファイルを選択してください'); return; }
+
+      let audioBlob;
+      let mimeType;
+
+      if (activeTab === 'file') {
+        const file = document.getElementById('audioFile').files[0];
+        if (!file) { showError('音声ファイルを選択してください'); return; }
+        audioBlob = file;
+        mimeType = file.type || 'audio/mp4';
+      } else {
+        if (!recordedBlob) { showError('録音してください'); return; }
+        audioBlob = recordedBlob;
+        mimeType = 'audio/webm';
+      }
 
       document.getElementById('runBtn').disabled = true;
       showStatus('音声を読み込み中...');
 
       try {
-        // Base64変換
-        const base64 = await toBase64(file);
-        const mimeType = file.type || 'audio/mp4';
+        const base64 = await toBase64(audioBlob);
 
         showStatus('文字起こし中... (少々お待ちください)');
 
-        // 文字起こし
         const transcript = await callGemini(key, base64, mimeType,
           '以下の音声を正確に文字起こししてください。話し言葉をそのまま書き起こしてください。');
 
@@ -319,12 +445,10 @@
 
         showStatus('要約・要点を生成中...');
 
-        // 要約
         const summaryRes = await callGeminiText(key,
           `以下の文字起こしテキストについて、以下の2つを出力してください。\n\n【要約】\n3行程度で要約\n\n【要点】\n・箇条書きで3〜5個\n\n文字起こし:\n${transcript}`
         );
 
-        // パース
         const summaryMatch = summaryRes.match(/【要約】\s*([\s\S]*?)(?=【要点】|$)/);
         const pointsMatch = summaryRes.match(/【要点】\s*([\s\S]*?)$/);
 
@@ -355,12 +479,12 @@
       }
     }
 
-    function toBase64(file) {
+    function toBase64(blob) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);
         reader.onerror = reject;
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(blob);
       });
     }
 
